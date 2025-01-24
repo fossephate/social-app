@@ -1,3 +1,5 @@
+import 'react-native-crypto'
+
 import React, {useCallback, useRef} from 'react'
 import {LayoutChangeEvent, View} from 'react-native'
 import {useKeyboardHandler} from 'react-native-keyboard-controller'
@@ -10,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import {ReanimatedScrollEvent} from 'react-native-reanimated/lib/typescript/hook/commonTypes'
 import {useSafeAreaInsets} from 'react-native-safe-area-context'
+import * as SecureStore from 'expo-secure-store'
 import {AppBskyEmbedRecord, AppBskyRichtextFacet, RichText} from '@atproto/api'
 
 import {clamp} from '#/lib/numbers'
@@ -40,6 +43,13 @@ import {NewMessagesPill} from '#/components/dms/NewMessagesPill'
 import {Loader} from '#/components/Loader'
 import {Text} from '#/components/Typography'
 import {MessageInputEmbed, useMessageEmbed} from './MessageInputEmbed'
+// import WebviewCrypto from 'react-native-webview-crypto'
+// let QuickCrypto: any;
+// if (!isWeb) {
+//   QuickCrypto = require('react-native-quick-crypto');
+// }
+// import * as QuickCrypto from 'react-native-quick-crypto';
+// QuickCrypto.install();
 
 function MaybeLoader({isLoading}: {isLoading: boolean}) {
   return (
@@ -73,6 +83,177 @@ function keyExtractor(item: ConvoItem) {
 
 function onScrollToIndexFailed() {
   // Placeholder function. You have to give FlatList something or else it will error.
+}
+
+async function generateMessageKeyPair() {
+  if (isWeb || true) {
+    return await window.crypto.subtle.generateKey(
+      {
+        name: 'RSA-OAEP',
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: 'SHA-256',
+      },
+      true,
+      ['encrypt', 'decrypt'],
+    )
+  } else {
+    return await crypto.subtle.generateKey(
+      {
+        name: 'RSA-OAEP',
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: 'SHA-256',
+      },
+      true,
+      ['encrypt', 'decrypt'],
+    )
+  }
+}
+
+async function encryptWithPublicKey(text: string, publicKey: any) {
+  const encoded = new TextEncoder().encode(text)
+  let encrypted
+  if (isWeb || true) {
+    encrypted = await window.crypto.subtle.encrypt(
+      {name: 'RSA-OAEP'},
+      publicKey,
+      encoded,
+    )
+  } else {
+    encrypted = await crypto.subtle.encrypt(
+      {name: 'RSA-OAEP'},
+      publicKey,
+      encoded,
+    )
+  }
+  return btoa(String.fromCharCode(...new Uint8Array(encrypted)))
+}
+
+async function importPubkey(key: string) {
+  let importedKey
+  if (isWeb || true) {
+    importedKey = await window.crypto.subtle.importKey(
+      'jwk',
+      JSON.parse(key), // The exported JWK object
+      {
+        name: 'RSA-OAEP',
+        hash: 'SHA-256',
+      },
+      true,
+      ['encrypt'], // For public key
+    )
+  } else {
+    importedKey = await crypto.subtle.importKey(
+      'jwk',
+      JSON.parse(key), // The exported JWK object
+      {
+        name: 'RSA-OAEP',
+        hash: 'SHA-256',
+      },
+      true,
+      ['encrypt'], // For public key
+    )
+  }
+  return importedKey
+}
+
+async function exportPubkey(key: any) {
+  let exported
+  if (isWeb || true) {
+    exported = await window.crypto.subtle.exportKey('jwk', key)
+  } else {
+    exported = await crypto.subtle.exportKey('jwk', key)
+  }
+  return JSON.stringify(exported)
+}
+
+async function decryptWithPrivateKey(
+  encryptedText: string,
+  privateKey: CryptoKey,
+) {
+  if (isWeb || true) {
+    const encryptedData = Uint8Array.from(atob(encryptedText), c =>
+      c.charCodeAt(0),
+    )
+    const decrypted = await window.crypto.subtle.decrypt(
+      {name: 'RSA-OAEP'},
+      privateKey,
+      encryptedData,
+    )
+    return new TextDecoder().decode(decrypted)
+  } else {
+    // TODO: implement this
+  }
+}
+
+function stripDid(did: string) {
+  return did.split(':')[2]
+}
+
+// wrap secure store / use local storage instead of secure store on web:
+function getItem(key: string) {
+  if (isWeb) {
+    return localStorage.getItem(key)
+  } else {
+    return SecureStore.getItem(key)
+  }
+}
+
+async function setItem(key: string, value: string) {
+  console.log('setting item:', key, value)
+  if (isWeb) {
+    return localStorage.setItem(key, value)
+  } else {
+    return SecureStore.setItemAsync(key, value)
+  }
+}
+
+const isBase64 = (str: string) =>
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(str)
+
+async function getOrCreateKeyPair(did: string) {
+  // check if we have a keypair for our did
+  let keyPair = JSON.parse((await getItem(did)) || '{}')
+  if (!keyPair.privateKey) {
+    console.log('no keypair found for our did! generating keypair...')
+    console.log('2')
+    keyPair = await generateMessageKeyPair()
+    console.log('keypair generated:')
+
+    const exported = {
+      publicKey: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
+      privateKey: await crypto.subtle.exportKey('jwk', keyPair.privateKey),
+    }
+
+    const serialized = JSON.stringify(exported)
+    console.log('serialized:', serialized)
+    console.log('setting item:', did, serialized)
+    await setItem(did, serialized)
+
+    var gotItem = await getItem(did)
+    console.log('gotItem:', gotItem)
+
+    return keyPair
+  } else {
+    const imported = {
+      publicKey: await crypto.subtle.importKey(
+        'jwk',
+        keyPair.publicKey,
+        {name: 'RSA-OAEP', hash: 'SHA-256'},
+        true,
+        ['encrypt'],
+      ),
+      privateKey: await crypto.subtle.importKey(
+        'jwk',
+        keyPair.privateKey,
+        {name: 'RSA-OAEP', hash: 'SHA-256'},
+        true,
+        ['decrypt'],
+      ),
+    }
+    return imported
+  }
 }
 
 export function MessagesList({
@@ -149,6 +330,81 @@ export function MessagesList({
         })
       }
 
+      // Log new messages when they arrive
+      const newItems = convoState.items.slice(prevItemCount.current)
+      newItems.forEach(async item => {
+        if (item.type === 'message' || item.type === 'pending-message') {
+          let text = item.message.text
+          const message = item.message
+          const messageId = message.id
+          console.log('New message received:', text)
+          let wasB64 = false
+
+          // check if we have a keypair for our did
+          if (!agent.did) {
+            console.error('agent.did is undefined')
+            return
+          }
+          const ourDid = stripDid(agent.did)
+
+          // if the message is base64 encoded, decode it
+          if (isBase64(text)) {
+            console.log('message is base64 encoded, decoding...')
+            text = atob(text)
+            // TODO: actually check if base64 encoded
+            wasB64 = true
+          }
+
+          if (text.startsWith('pubkey_')) {
+            try {
+              console.log('New pubkey received')
+              const pubkey = JSON.parse(text.slice('pubkey_'.length))
+              const senderDid = stripDid(item.message.sender.did)
+              await setItem(`pubkey_${senderDid}`, JSON.stringify(pubkey))
+              // hide this message:
+              await setItem(`override_${messageId}`, 'hidden')
+              // // respond with our pubkey:
+              // let keyPair = await getOrCreateKeyPair(ourDid)
+              // convoState.sendMessage({
+              //   text: atob(`pubkey:${JSON.stringify(keyPair.publicKey)}`),
+              //   facets: [],
+              //   embed: undefined,
+              // })
+            } catch (e) {
+              console.error('Error setting pubkey:', e)
+            }
+          }
+
+          if (text.startsWith('enc_') && wasB64) {
+            try {
+              // attempt to decrypt using our private key
+              let ourKeyPair = await getOrCreateKeyPair(ourDid)
+              // console.log("ourKeyPair:", ourKeyPair)
+              const decryptedText = await decryptWithPrivateKey(
+                text.slice('enc_'.length),
+                ourKeyPair.privateKey,
+              )
+              console.log('Decrypted text:', decryptedText)
+              // set the message override:
+              await setItem(
+                `override_${messageId}`,
+                'decrypted_' + decryptedText,
+              )
+            } catch (e) {
+              console.error('Error decrypting message:', e)
+            }
+          }
+        }
+      })
+
+      // // edit all items to have an override:
+      // convoState.items = convoState.items.map(item => {
+      //   return {
+      //     ...item,
+      //     text: "test2222",
+      //   }
+      // })
+
       // This number _must_ be the height of the MaybeLoader component
       if (height > 50 && isAtBottom.get()) {
         // If the size of the content is changing by more than the height of the screen, then we don't
@@ -196,8 +452,8 @@ export function MessagesList({
       hasScrolled,
       setHasScrolled,
       convoState.isFetchingHistory,
-      convoState.items.length,
-      // these are stable
+      convoState.items, // these are stable
+      agent.did,
       flatListRef,
       isAtTop,
       isAtBottom,
@@ -358,11 +614,68 @@ export function MessagesList({
         setHasScrolled(true)
       }
 
-      convoState.sendMessage({
-        text: rt.text,
-        facets: rt.facets,
-        embed,
-      })
+      console.log('onSendMessage called with text:', text)
+
+      if (!agent.did) {
+        console.error('agent.did is undefined')
+        return
+      }
+
+      if (!convoState.recipients[0].did) {
+        console.error('convoState.recipients[0].did is undefined')
+        return
+      }
+
+      const ourDid = stripDid(agent.did)
+      const recipientDid = stripDid(convoState.recipients[0].did)
+      // first check if we have a keypair for our did
+      console.log('agent.did:', ourDid)
+      let keyPair = await getOrCreateKeyPair(ourDid)
+
+      // post a message with pub:<ourPubKey>
+      // and then post a message encrypted with their pubKey if they have one:
+      // get their pubKey from the store
+      const recipientPubkey = await getItem(`pubkey_${recipientDid}`)
+      console.log('recipientPubkey:', recipientPubkey)
+
+      if (recipientPubkey == null || recipientPubkey == undefined) {
+        console.log(
+          'recipientPubkey is null or undefined! sending our pubkey...',
+        )
+        // they haven't sent their pubKey yet!:
+        // just send our pubkey:
+        console.log(keyPair)
+
+        const exportedPubkey: string = await exportPubkey(keyPair.publicKey)
+        console.log('exportedPubkey:', exportedPubkey)
+        convoState.sendMessage({
+          text: `pubkey_${exportedPubkey}`,
+          facets: rt.facets,
+          embed,
+        })
+        return
+      } else {
+        const importedKey = await importPubkey(recipientPubkey)
+        console.log('importedKey:', importedKey)
+
+        // encrypt our message with their public key
+        const encryptedText = `enc_${await encryptWithPublicKey(
+          rt.text,
+          importedKey,
+        )}`
+        // base64 encode the text
+        const base64Text = btoa(encryptedText)
+
+        // add a message override:
+        // await setItem(`override:${rt.}`, rt.text)
+        // send the message with the encrypted text
+        convoState.sendMessage({
+          text: base64Text,
+          facets: rt.facets,
+          embed,
+        })
+        return
+      }
     },
     [agent, convoState, embedUri, getPost, hasScrolled, setHasScrolled],
   )

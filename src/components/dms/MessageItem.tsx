@@ -6,6 +6,7 @@ import {
   TextStyle,
   View,
 } from 'react-native'
+import * as SecureStore from 'expo-secure-store'
 import {
   AppBskyEmbedRecord,
   ChatBskyConvoDefs,
@@ -15,6 +16,7 @@ import {I18n} from '@lingui/core'
 import {msg} from '@lingui/macro'
 import {useLingui} from '@lingui/react'
 
+import {isWeb} from '#/platform/detection'
 import {ConvoItem} from '#/state/messages/convo/types'
 import {useSession} from '#/state/session'
 import {TimeElapsed} from '#/view/com/util/TimeElapsed'
@@ -88,6 +90,14 @@ let MessageItem = ({
     return true
   }, [message, nextMessage, isPending])
 
+  function getItem(key: string) {
+    if (isWeb) {
+      return localStorage.getItem(key)
+    } else {
+      return SecureStore.getItem(key)
+    }
+  }
+
   const lastInGroupRef = useRef(isLastInGroup)
   if (lastInGroupRef.current !== isLastInGroup) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
@@ -97,8 +107,13 @@ let MessageItem = ({
   const pendingColor = t.palette.primary_200
 
   const rt = useMemo(() => {
-    return new RichTextAPI({text: message.text, facets: message.facets})
-  }, [message.text, message.facets])
+    const override = getItem(`override_${message.id}`)
+    console.log('override', override)
+    return new RichTextAPI({
+      text: override ?? message.text,
+      facets: message.facets,
+    })
+  }, [message.text, message.facets, message.id])
 
   return (
     <>
