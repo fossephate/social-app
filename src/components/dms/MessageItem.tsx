@@ -108,9 +108,10 @@ let MessageItem = ({
 
   const rt = useMemo(() => {
     const override = getItem(`override_${message.id}`)
-    console.log('override', override)
+    const textOverride = getItem(`override_${message.text}`)
+    // console.log('override', override)
     return new RichTextAPI({
-      text: override ?? message.text,
+      text: override ?? textOverride ?? message.text,
       facets: message.facets,
     })
   }, [message.text, message.facets, message.id])

@@ -1,4 +1,4 @@
-import 'react-native-crypto'
+// import 'react-native-crypto'
 
 import React, {useCallback, useRef} from 'react'
 import {LayoutChangeEvent, View} from 'react-native'
@@ -114,7 +114,7 @@ async function generateMessageKeyPair() {
 async function encryptWithPublicKey(text: string, publicKey: any) {
   const encoded = new TextEncoder().encode(text)
   let encrypted
-  if (isWeb || true) {
+  if (isWeb) {
     encrypted = await window.crypto.subtle.encrypt(
       {name: 'RSA-OAEP'},
       publicKey,
@@ -132,7 +132,7 @@ async function encryptWithPublicKey(text: string, publicKey: any) {
 
 async function importPubkey(key: string) {
   let importedKey
-  if (isWeb || true) {
+  if (isWeb) {
     importedKey = await window.crypto.subtle.importKey(
       'jwk',
       JSON.parse(key), // The exported JWK object
@@ -188,7 +188,7 @@ async function decryptWithPrivateKey(
 }
 
 function stripDid(did: string) {
-  return did.split(':')[2]
+  return did.split(':')[2].trim()
 }
 
 // wrap secure store / use local storage instead of secure store on web:
@@ -256,6 +256,18 @@ async function getOrCreateKeyPair(did: string) {
   }
 }
 
+function updateMessage(items: ConvoItem[], messageId: string, text: string) {
+  return items.map(item => {
+    if (item.type !== 'message') {
+      return item
+    }
+    if (item.message.id === messageId) {
+      item.message.text = text
+    }
+    return item
+  })
+}
+
 export function MessagesList({
   hasScrolled,
   setHasScrolled,
@@ -271,6 +283,7 @@ export function MessagesList({
   const agent = useAgent()
   const getPost = useGetPost()
   const {embedUri, setEmbed} = useMessageEmbed()
+  const [notReplied, setNotReplied] = React.useState(false)
 
   const flatListRef = useAnimatedRef<ListMethods>()
 
@@ -330,81 +343,6 @@ export function MessagesList({
         })
       }
 
-      // Log new messages when they arrive
-      const newItems = convoState.items.slice(prevItemCount.current)
-      newItems.forEach(async item => {
-        if (item.type === 'message' || item.type === 'pending-message') {
-          let text = item.message.text
-          const message = item.message
-          const messageId = message.id
-          console.log('New message received:', text)
-          let wasB64 = false
-
-          // check if we have a keypair for our did
-          if (!agent.did) {
-            console.error('agent.did is undefined')
-            return
-          }
-          const ourDid = stripDid(agent.did)
-
-          // if the message is base64 encoded, decode it
-          if (isBase64(text)) {
-            console.log('message is base64 encoded, decoding...')
-            text = atob(text)
-            // TODO: actually check if base64 encoded
-            wasB64 = true
-          }
-
-          if (text.startsWith('pubkey_')) {
-            try {
-              console.log('New pubkey received')
-              const pubkey = JSON.parse(text.slice('pubkey_'.length))
-              const senderDid = stripDid(item.message.sender.did)
-              await setItem(`pubkey_${senderDid}`, JSON.stringify(pubkey))
-              // hide this message:
-              await setItem(`override_${messageId}`, 'hidden')
-              // // respond with our pubkey:
-              // let keyPair = await getOrCreateKeyPair(ourDid)
-              // convoState.sendMessage({
-              //   text: atob(`pubkey:${JSON.stringify(keyPair.publicKey)}`),
-              //   facets: [],
-              //   embed: undefined,
-              // })
-            } catch (e) {
-              console.error('Error setting pubkey:', e)
-            }
-          }
-
-          if (text.startsWith('enc_') && wasB64) {
-            try {
-              // attempt to decrypt using our private key
-              let ourKeyPair = await getOrCreateKeyPair(ourDid)
-              // console.log("ourKeyPair:", ourKeyPair)
-              const decryptedText = await decryptWithPrivateKey(
-                text.slice('enc_'.length),
-                ourKeyPair.privateKey,
-              )
-              console.log('Decrypted text:', decryptedText)
-              // set the message override:
-              await setItem(
-                `override_${messageId}`,
-                'decrypted_' + decryptedText,
-              )
-            } catch (e) {
-              console.error('Error decrypting message:', e)
-            }
-          }
-        }
-      })
-
-      // // edit all items to have an override:
-      // convoState.items = convoState.items.map(item => {
-      //   return {
-      //     ...item,
-      //     text: "test2222",
-      //   }
-      // })
-
       // This number _must_ be the height of the MaybeLoader component
       if (height > 50 && isAtBottom.get()) {
         // If the size of the content is changing by more than the height of the screen, then we don't
@@ -453,7 +391,6 @@ export function MessagesList({
       setHasScrolled,
       convoState.isFetchingHistory,
       convoState.items, // these are stable
-      agent.did,
       flatListRef,
       isAtTop,
       isAtBottom,
@@ -629,7 +566,8 @@ export function MessagesList({
       const ourDid = stripDid(agent.did)
       const recipientDid = stripDid(convoState.recipients[0].did)
       // first check if we have a keypair for our did
-      console.log('agent.did:', ourDid)
+      console.log('ourDid:', ourDid)
+      console.log('recipientDid:', recipientDid)
       let keyPair = await getOrCreateKeyPair(ourDid)
 
       // post a message with pub:<ourPubKey>
@@ -638,7 +576,11 @@ export function MessagesList({
       const recipientPubkey = await getItem(`pubkey_${recipientDid}`)
       console.log('recipientPubkey:', recipientPubkey)
 
-      if (recipientPubkey == null || recipientPubkey == undefined) {
+      if (
+        recipientPubkey === null ||
+        recipientPubkey === undefined ||
+        notReplied
+      ) {
         console.log(
           'recipientPubkey is null or undefined! sending our pubkey...',
         )
@@ -648,11 +590,17 @@ export function MessagesList({
 
         const exportedPubkey: string = await exportPubkey(keyPair.publicKey)
         console.log('exportedPubkey:', exportedPubkey)
+
+        let pubkeyText = `pubkey_${exportedPubkey}`
+        if (notReplied) {
+          pubkeyText = `pubkeyrep_${exportedPubkey}`
+        }
         convoState.sendMessage({
-          text: `pubkey_${exportedPubkey}`,
+          text: pubkeyText,
           facets: rt.facets,
           embed,
         })
+        setNotReplied(false)
         return
       } else {
         const importedKey = await importPubkey(recipientPubkey)
@@ -667,7 +615,7 @@ export function MessagesList({
         const base64Text = btoa(encryptedText)
 
         // add a message override:
-        // await setItem(`override:${rt.}`, rt.text)
+        await setItem(`override_${base64Text}`, rt.text)
         // send the message with the encrypted text
         convoState.sendMessage({
           text: base64Text,
@@ -677,7 +625,15 @@ export function MessagesList({
         return
       }
     },
-    [agent, convoState, embedUri, getPost, hasScrolled, setHasScrolled],
+    [
+      agent,
+      convoState,
+      embedUri,
+      getPost,
+      hasScrolled,
+      setHasScrolled,
+      notReplied,
+    ],
   )
 
   // -- List layout changes (opening emoji keyboard, etc.)
@@ -706,6 +662,79 @@ export function MessagesList({
       animated: true,
     })
   }, [flatListRef])
+
+  // Log new messages when they arrive
+  let items = convoState.items.slice(0)
+  const newItems = convoState.items.slice(prevItemCount.current)
+  newItems.forEach(async item => {
+    if (item.type !== 'message' && item.type !== 'pending-message') {
+      return
+    }
+    let text = item.message.text
+    const message = item.message
+    const messageId = message.id
+    const senderDid = stripDid(message.sender.did)
+    console.log('New message received:', text)
+    let wasB64 = false
+
+    // check if we have a keypair for our did
+    if (!agent.did) {
+      return
+    }
+    const ourDid = stripDid(agent.did)
+
+    // if the message is base64 encoded, decode it
+    if (isBase64(text)) {
+      text = atob(text)
+      wasB64 = true
+    }
+
+    if (text.startsWith('pubkey_') || text.startsWith('pubkeyrep_')) {
+      let isReply = text.startsWith('pubkeyrep_')
+      try {
+        let prefix = isReply ? 'pubkeyrep_' : 'pubkey_'
+        // console.log(`New pubkey received from did: ${senderDid}`)
+        const pubkey = JSON.parse(text.slice(prefix.length))
+        await setItem(`pubkey_${senderDid}`, JSON.stringify(pubkey))
+        // hide this message:
+        items = updateMessage(items, messageId, 'hidden')
+        // respond with our pubkey:
+        if (!isReply && senderDid !== ourDid) {
+          console.log('sending pubkey reply on next message...')
+          setNotReplied(true)
+          // let keyPair = await getOrCreateKeyPair(ourDid)
+          // let rt = new RichText({ text: text.trimEnd() }, { cleanNewlines: true })
+          // convoState.sendMessage({
+          //   text: atob(`pubkeyrep_${JSON.stringify(keyPair.publicKey)}`),
+          //   facets: rt.facets,
+          // })
+          return
+        }
+      } catch (e) {
+        console.error('Error setting pubkey:', e)
+      }
+    }
+
+    if (text.startsWith('enc_') && wasB64) {
+      try {
+        // attempt to decrypt using our private key
+        let ourKeyPair = await getOrCreateKeyPair(ourDid)
+        // console.log("ourKeyPair:", ourKeyPair)
+        const decryptedText = await decryptWithPrivateKey(
+          text.slice('enc_'.length),
+          ourKeyPair.privateKey,
+        )
+        console.log('Decrypted text:', decryptedText)
+
+        items = updateMessage(items, messageId, decryptedText ?? '')
+      } catch (e) {
+        console.error('Error decrypting message:', e)
+      }
+    }
+  })
+  // convoState.items = [...items]
+
+  convoState.items = items
 
   return (
     <>
