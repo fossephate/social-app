@@ -217,9 +217,7 @@ async function getOrCreateKeyPair(did: string) {
   let keyPair = JSON.parse((await getItem(did)) || '{}')
   if (!keyPair.privateKey) {
     console.log('no keypair found for our did! generating keypair...')
-    console.log('2')
     keyPair = await generateMessageKeyPair()
-    console.log('keypair generated:')
 
     const exported = {
       publicKey: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
@@ -227,12 +225,7 @@ async function getOrCreateKeyPair(did: string) {
     }
 
     const serialized = JSON.stringify(exported)
-    console.log('serialized:', serialized)
-    console.log('setting item:', did, serialized)
     await setItem(did, serialized)
-
-    var gotItem = await getItem(did)
-    console.log('gotItem:', gotItem)
 
     return keyPair
   } else {
@@ -574,7 +567,7 @@ export function MessagesList({
       // and then post a message encrypted with their pubKey if they have one:
       // get their pubKey from the store
       const recipientPubkey = await getItem(`pubkey_${recipientDid}`)
-      console.log('recipientPubkey:', recipientPubkey)
+      // console.log('recipientPubkey:', recipientPubkey)
 
       if (
         recipientPubkey === null ||
@@ -586,10 +579,9 @@ export function MessagesList({
         )
         // they haven't sent their pubKey yet!:
         // just send our pubkey:
-        console.log(keyPair)
 
         const exportedPubkey: string = await exportPubkey(keyPair.publicKey)
-        console.log('exportedPubkey:', exportedPubkey)
+        // console.log('exportedPubkey:', exportedPubkey)
 
         let pubkeyText = `pubkey_${exportedPubkey}`
         if (notReplied) {
