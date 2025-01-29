@@ -50,6 +50,10 @@ import {MessageInputEmbed, useMessageEmbed} from './MessageInputEmbed'
 // }
 // import * as QuickCrypto from 'react-native-quick-crypto';
 // QuickCrypto.install();
+let Crypto: any
+if (!isWeb) {
+  Crypto = require('react-native-quick-crypto')
+}
 
 function MaybeLoader({isLoading}: {isLoading: boolean}) {
   return (
@@ -86,85 +90,68 @@ function onScrollToIndexFailed() {
 }
 
 async function generateMessageKeyPair() {
-  if (isWeb || true) {
-    return await window.crypto.subtle.generateKey(
-      {
-        name: 'RSA-OAEP',
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: 'SHA-256',
-      },
-      true,
-      ['encrypt', 'decrypt'],
-    )
+  let subtle
+  if (isWeb) {
+    subtle = window.crypto.subtle
   } else {
-    return await crypto.subtle.generateKey(
-      {
-        name: 'RSA-OAEP',
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: 'SHA-256',
-      },
-      true,
-      ['encrypt', 'decrypt'],
-    )
+    subtle = Crypto.subtle
   }
+  return await subtle.generateKey(
+    {
+      name: 'RSA-OAEP',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['encrypt', 'decrypt'],
+  )
 }
 
 async function encryptWithPublicKey(text: string, publicKey: any) {
   const encoded = new TextEncoder().encode(text)
-  let encrypted
+  let subtle
   if (isWeb) {
-    encrypted = await window.crypto.subtle.encrypt(
-      {name: 'RSA-OAEP'},
-      publicKey,
-      encoded,
-    )
+    subtle = window.crypto.subtle
   } else {
-    encrypted = await crypto.subtle.encrypt(
-      {name: 'RSA-OAEP'},
-      publicKey,
-      encoded,
-    )
+    subtle = Crypto.subtle
   }
+  const encrypted = await subtle.encrypt({name: 'RSA-OAEP'}, publicKey, encoded)
   return btoa(String.fromCharCode(...new Uint8Array(encrypted)))
 }
 
 async function importPubkey(key: string) {
-  let importedKey
+  let subtle
   if (isWeb) {
-    importedKey = await window.crypto.subtle.importKey(
-      'jwk',
-      JSON.parse(key), // The exported JWK object
-      {
-        name: 'RSA-OAEP',
-        hash: 'SHA-256',
-      },
-      true,
-      ['encrypt'], // For public key
-    )
+    subtle = window.crypto.subtle
   } else {
-    importedKey = await crypto.subtle.importKey(
-      'jwk',
-      JSON.parse(key), // The exported JWK object
-      {
-        name: 'RSA-OAEP',
-        hash: 'SHA-256',
-      },
-      true,
-      ['encrypt'], // For public key
-    )
+    subtle = Crypto.subtle
   }
+  let importedKey = await subtle.importKey(
+    'jwk',
+    JSON.parse(key), // The exported JWK object
+    {
+      name: 'RSA-OAEP',
+      hash: 'SHA-256',
+    },
+    true,
+    ['encrypt'], // For public key
+  )
   return importedKey
 }
 
 async function exportPubkey(key: any) {
-  let exported
-  if (isWeb || true) {
-    exported = await window.crypto.subtle.exportKey('jwk', key)
+  let subtle
+  if (isWeb) {
+    subtle = window.crypto.subtle
   } else {
-    exported = await crypto.subtle.exportKey('jwk', key)
+    subtle = Crypto.subtle
   }
+  let exported = await subtle.exportKey('jwk', key)
+  if (!isWeb) {
+    exported.n = exported.n.replace(/\.+$/, '')
+  }
+  console.log('exportedPubkey n:', exported.n)
   return JSON.stringify(exported)
 }
 
@@ -172,27 +159,36 @@ async function decryptWithPrivateKey(
   encryptedText: string,
   privateKey: CryptoKey,
 ) {
-  if (isWeb || true) {
-    const encryptedData = Uint8Array.from(atob(encryptedText), c =>
-      c.charCodeAt(0),
-    )
-    const decrypted = await window.crypto.subtle.decrypt(
-      {name: 'RSA-OAEP'},
-      privateKey,
-      encryptedData,
-    )
-    return new TextDecoder().decode(decrypted)
+  let subtle
+  if (isWeb) {
+    subtle = window.crypto.subtle
   } else {
-    // TODO: implement this
+    subtle = Crypto.subtle
   }
+  const encryptedData = Uint8Array.from(atob(encryptedText), c =>
+    c.charCodeAt(0),
+  )
+  const decrypted = await subtle.decrypt(
+    {name: 'RSA-OAEP'},
+    privateKey,
+    encryptedData,
+  )
+  return new TextDecoder().decode(decrypted)
 }
 
 function stripDid(did: string) {
   return did.split(':')[2].trim()
 }
 
+function sanitizeKey(key: string) {
+  // replace any non-alphanumeric non-underscore, non-dash, non-period characters with an underscore:
+  return key.replace(/[^a-zA-Z0-9_.-]/g, '_')
+}
+
 // wrap secure store / use local storage instead of secure store on web:
 function getItem(key: string) {
+  // console.log('getting item:', key)
+  key = sanitizeKey(key)
   if (isWeb) {
     return localStorage.getItem(key)
   } else {
@@ -202,6 +198,7 @@ function getItem(key: string) {
 
 async function setItem(key: string, value: string) {
   // console.log('setting item:', key, value)
+  key = sanitizeKey(key)
   if (isWeb) {
     return localStorage.setItem(key, value)
   } else {
@@ -213,15 +210,23 @@ const isBase64 = (str: string) =>
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(str)
 
 async function getOrCreateKeyPair(did: string) {
+  let subtle
+  if (isWeb) {
+    subtle = window.crypto.subtle
+  } else {
+    subtle = Crypto.subtle
+  }
+
   // check if we have a keypair for our did
   let keyPair = JSON.parse((await getItem(did)) || '{}')
   if (!keyPair.privateKey) {
     console.log('no keypair found for our did! generating keypair...')
     keyPair = await generateMessageKeyPair()
+    console.log('generated keypair:')
 
     const exported = {
-      publicKey: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
-      privateKey: await crypto.subtle.exportKey('jwk', keyPair.privateKey),
+      publicKey: await subtle.exportKey('jwk', keyPair.publicKey),
+      privateKey: await subtle.exportKey('jwk', keyPair.privateKey),
     }
 
     const serialized = JSON.stringify(exported)
@@ -230,14 +235,14 @@ async function getOrCreateKeyPair(did: string) {
     return keyPair
   } else {
     const imported = {
-      publicKey: await crypto.subtle.importKey(
+      publicKey: await subtle.importKey(
         'jwk',
         keyPair.publicKey,
         {name: 'RSA-OAEP', hash: 'SHA-256'},
         true,
         ['encrypt'],
       ),
-      privateKey: await crypto.subtle.importKey(
+      privateKey: await subtle.importKey(
         'jwk',
         keyPair.privateKey,
         {name: 'RSA-OAEP', hash: 'SHA-256'},
@@ -563,17 +568,30 @@ export function MessagesList({
       console.log('recipientDid:', recipientDid)
       let keyPair = await getOrCreateKeyPair(ourDid)
 
+      // sanity check, encrypt and decrypt a message with our key pair:
+      // const encryptedText = await encryptWithPublicKey(rt.text, keyPair.publicKey)
+      // const decryptedText = await decryptWithPrivateKey(encryptedText, keyPair.privateKey)
+      // console.log('original text:', rt.text)
+      // console.log('encryptedText:', encryptedText)
+      // console.log('decryptedText:', decryptedText)
+
       // post a message with pub:<ourPubKey>
       // and then post a message encrypted with their pubKey if they have one:
       // get their pubKey from the store
       const recipientPubkey = await getItem(`pubkey_${recipientDid}`)
-      // console.log('recipientPubkey:', recipientPubkey)
+      console.log('recipientPubkey:', recipientPubkey)
 
-      if (
-        recipientPubkey === null ||
-        recipientPubkey === undefined ||
-        notReplied
-      ) {
+      let importedKey: any
+
+      try {
+        console.log(`importing pubkey... ${recipientPubkey}`)
+        importedKey = await importPubkey(recipientPubkey ?? '')
+        console.log('importedKey:', importedKey)
+      } catch (e) {
+        console.log('Error importing pubkey:', e)
+      }
+
+      if (importedKey === null || importedKey === undefined || notReplied) {
         console.log(
           'recipientPubkey is null or undefined! sending our pubkey...',
         )
@@ -581,7 +599,6 @@ export function MessagesList({
         // just send our pubkey:
 
         const exportedPubkey: string = await exportPubkey(keyPair.publicKey)
-        // console.log('exportedPubkey:', exportedPubkey)
 
         let pubkeyText = `pubkey_${exportedPubkey}`
         if (notReplied) {
@@ -595,24 +612,32 @@ export function MessagesList({
         setNotReplied(false)
         return
       } else {
-        const importedKey = await importPubkey(recipientPubkey)
-
-        // encrypt our message with their public key
-        const encryptedText = `enc_${await encryptWithPublicKey(
-          rt.text,
-          importedKey,
-        )}`
-        // base64 encode the text
-        const base64Text = btoa(encryptedText)
-
-        // add a message override:
-        await setItem(`override_${base64Text}`, rt.text)
-        // send the message with the encrypted text
-        convoState.sendMessage({
-          text: base64Text,
-          facets: rt.facets,
-          embed,
-        })
+        try {
+          // encrypt our message with their public key
+          const encryptedText = `enc_${await encryptWithPublicKey(
+            rt.text,
+            importedKey,
+          )}`
+          console.log('encryptedText:', encryptedText)
+          // base64 encode the text
+          const base64Text = btoa(encryptedText)
+          console.log('base64Text:', base64Text)
+          // add a message override:
+          await setItem(`override_${base64Text}`, rt.text)
+          // send the message with the encrypted text
+          convoState.sendMessage({
+            text: base64Text,
+            facets: rt.facets,
+            embed,
+          })
+        } catch (e) {
+          console.error('Error encrypting message:', e)
+          convoState.sendMessage({
+            text: 'Failed to encrypt message',
+            facets: rt.facets,
+            embed,
+          })
+        }
         return
       }
     },
@@ -665,26 +690,30 @@ export function MessagesList({
     const message = item.message
     const messageId = message.id
     const senderDid = stripDid(message.sender.did)
-    console.log('New message received:', text)
-    let wasB64 = false
-
-    // check if we have a keypair for our did
     if (!agent.did) {
       return
     }
     const ourDid = stripDid(agent.did)
+    if (senderDid !== ourDid) {
+      console.log('New message received:', text)
+    }
 
+    let wasB64 = false
     // if the message is base64 encoded, decode it
     if (isBase64(text)) {
       text = atob(text)
       wasB64 = true
     }
 
+    if (senderDid === ourDid) {
+      return
+    }
+
     if (text.startsWith('pubkey_') || text.startsWith('pubkeyrep_')) {
       let isReply = text.startsWith('pubkeyrep_')
       try {
         let prefix = isReply ? 'pubkeyrep_' : 'pubkey_'
-        // console.log(`New pubkey received from did: ${senderDid}`)
+        console.log(`New pubkey received from did: ${senderDid}`)
         const pubkey = JSON.parse(text.slice(prefix.length))
         await setItem(`pubkey_${senderDid}`, JSON.stringify(pubkey))
         // hide this message:

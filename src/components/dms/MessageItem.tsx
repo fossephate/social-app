@@ -90,14 +90,6 @@ let MessageItem = ({
     return true
   }, [message, nextMessage, isPending])
 
-  function getItem(key: string) {
-    if (isWeb) {
-      return localStorage.getItem(key)
-    } else {
-      return SecureStore.getItem(key)
-    }
-  }
-
   const lastInGroupRef = useRef(isLastInGroup)
   if (lastInGroupRef.current !== isLastInGroup) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
@@ -107,6 +99,20 @@ let MessageItem = ({
   const pendingColor = t.palette.primary_200
 
   const rt = useMemo(() => {
+    function sanitizeKey(key: string) {
+      // replace any non-alphanumeric non-underscore, non-dash, non-period characters with an underscore:
+      return key.replace(/[^a-zA-Z0-9_.-]/g, '_')
+    }
+
+    function getItem(key: string) {
+      key = sanitizeKey(key)
+      if (isWeb) {
+        return localStorage.getItem(key)
+      } else {
+        return SecureStore.getItem(key)
+      }
+    }
+
     const override = getItem(`override_${message.id}`)
     const textOverride = getItem(`override_${message.text}`)
     // console.log('override', override)
