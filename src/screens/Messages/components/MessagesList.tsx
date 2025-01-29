@@ -201,7 +201,7 @@ function getItem(key: string) {
 }
 
 async function setItem(key: string, value: string) {
-  console.log('setting item:', key, value)
+  // console.log('setting item:', key, value)
   if (isWeb) {
     return localStorage.setItem(key, value)
   } else {
@@ -596,7 +596,6 @@ export function MessagesList({
         return
       } else {
         const importedKey = await importPubkey(recipientPubkey)
-        console.log('importedKey:', importedKey)
 
         // encrypt our message with their public key
         const encryptedText = `enc_${await encryptWithPublicKey(
@@ -689,7 +688,12 @@ export function MessagesList({
         const pubkey = JSON.parse(text.slice(prefix.length))
         await setItem(`pubkey_${senderDid}`, JSON.stringify(pubkey))
         // hide this message:
-        items = updateMessage(items, messageId, 'hidden')
+        // items = updateMessage(items, messageId, 'hidden')
+        // delete the message after 3 seconds:
+        // setTimeout(() => {
+        //   convoState.deleteMessage(messageId)
+        // }, 1000)
+        // convoState.deleteMessage()
         // respond with our pubkey:
         if (!isReply && senderDid !== ourDid) {
           console.log('sending pubkey reply on next message...')
@@ -719,6 +723,8 @@ export function MessagesList({
         console.log('Decrypted text:', decryptedText)
 
         items = updateMessage(items, messageId, decryptedText ?? '')
+        console.log('attempting to update items!!!')
+        convoState.items = items
       } catch (e) {
         console.error('Error decrypting message:', e)
       }
