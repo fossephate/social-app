@@ -209,6 +209,10 @@ async function setItem(key: string, value: string) {
 const isBase64 = (str: string) =>
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(str)
 
+async function getKeyPair(did: string) {
+  return JSON.parse((await getItem(did)) || '{}')
+}
+
 async function getOrCreateKeyPair(did: string) {
   let subtle
   if (isWeb) {
@@ -218,7 +222,7 @@ async function getOrCreateKeyPair(did: string) {
   }
 
   // check if we have a keypair for our did
-  let keyPair = JSON.parse((await getItem(did)) || '{}')
+  let keyPair = await getKeyPair(did)
   if (!keyPair.privateKey) {
     console.log('no keypair found for our did! generating keypair...')
     keyPair = await generateMessageKeyPair()
@@ -566,6 +570,7 @@ export function MessagesList({
       // first check if we have a keypair for our did
       console.log('ourDid:', ourDid)
       console.log('recipientDid:', recipientDid)
+      let haveOwnKeyPair = (await getKeyPair(ourDid)).privateKey !== undefined
       let keyPair = await getOrCreateKeyPair(ourDid)
 
       // sanity check, encrypt and decrypt a message with our key pair:
@@ -589,7 +594,13 @@ export function MessagesList({
         console.log('Error importing pubkey:', e)
       }
 
-      if (importedKey === null || importedKey === undefined || notReplied) {
+      // if we didn't have a key pair, or we don't have their pubkey, we must send our pubkey:
+      if (
+        importedKey === null ||
+        importedKey === undefined ||
+        notReplied ||
+        !haveOwnKeyPair
+      ) {
         console.log(
           'recipientPubkey is null or undefined! sending our pubkey...',
         )
@@ -608,6 +619,30 @@ export function MessagesList({
           embed,
         })
         setNotReplied(false)
+
+        // if we have their pubkey, we can still send an encrypted message in addition to our pubkey:
+        if (importedKey !== null) {
+          try {
+            // encrypt our message with their public key
+            const encryptedText = `enc_${await encryptWithPublicKey(
+              rt.text,
+              importedKey,
+            )}`
+            // base64 encode the text
+            const base64Text = btoa(encryptedText)
+            // console.log('base64Text:', base64Text)
+            // add a message override:
+            await setItem(`override_${base64Text}`, rt.text)
+            // send the message with the encrypted text
+            convoState.sendMessage({
+              text: base64Text,
+              facets: rt.facets,
+              embed,
+            })
+          } catch (e) {
+            console.log('Error encrypting message:', e)
+          }
+        }
         return
       } else {
         try {
