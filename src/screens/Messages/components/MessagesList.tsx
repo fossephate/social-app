@@ -720,6 +720,7 @@ export function MessagesList({
     const message = item.message
     const messageId = message.id
     const senderDid = stripDid(message.sender.did)
+    const isLastMessage = items.length - 1 === items.indexOf(item)
     if (!agent.did) {
       return
     }
@@ -749,7 +750,11 @@ export function MessagesList({
         // hide this message:
         await setItem(`override_${messageId}`, '')
         items = updateMessage(items, messageId, 'hidden')
-        // convoState.updateMessage(messageId, 'hidden')
+        if (isLastMessage) {
+          convoState.fetchMessageHistory()
+        }
+
+        // TODO: if someone just sent their pubkeyrep, we should send our last message again:
 
         // delete the message after 3 seconds:
         // setTimeout(() => {
@@ -789,9 +794,21 @@ export function MessagesList({
         console.log('Decrypted text:', decryptedText)
 
         items = updateMessage(items, messageId, decryptedText ?? '')
-        convoState.fetchMessageHistory()
+        if (isLastMessage) {
+          convoState.fetchMessageHistory()
+        }
       } catch (e) {
-        console.error('Error decrypting message:', e)
+        console.log('Error decrypting message:', e)
+        // set an override for this message saying we failed to decrypt it:
+        await setItem(
+          `override_${messageId}`,
+          'Failed to decrypt message, someone probably changed devices',
+        )
+        // if this is the last message in the list, we need to set notReplied to true
+        if (isLastMessage) {
+          setNotReplied(true)
+          convoState.fetchMessageHistory()
+        }
       }
     }
   })
