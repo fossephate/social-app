@@ -579,14 +579,12 @@ export function MessagesList({
       // and then post a message encrypted with their pubKey if they have one:
       // get their pubKey from the store
       const recipientPubkey = await getItem(`pubkey_${recipientDid}`)
-      console.log('recipientPubkey:', recipientPubkey)
+      // console.log('recipientPubkey:', recipientPubkey)
 
       let importedKey: any
 
       try {
-        console.log(`importing pubkey... ${recipientPubkey}`)
         importedKey = await importPubkey(recipientPubkey ?? '')
-        console.log('importedKey:', importedKey)
       } catch (e) {
         console.log('Error importing pubkey:', e)
       }
@@ -600,9 +598,9 @@ export function MessagesList({
 
         const exportedPubkey: string = await exportPubkey(keyPair.publicKey)
 
-        let pubkeyText = `pubkey_${exportedPubkey}`
+        let pubkeyText = btoa(`pubkey_${exportedPubkey}`)
         if (notReplied) {
-          pubkeyText = `pubkeyrep_${exportedPubkey}`
+          pubkeyText = btoa(`pubkeyrep_${exportedPubkey}`)
         }
         convoState.sendMessage({
           text: pubkeyText,
@@ -618,7 +616,7 @@ export function MessagesList({
             rt.text,
             importedKey,
           )}`
-          console.log('encryptedText:', encryptedText)
+          // console.log('encryptedText:', encryptedText)
           // base64 encode the text
           const base64Text = btoa(encryptedText)
           console.log('base64Text:', base64Text)
@@ -631,7 +629,7 @@ export function MessagesList({
             embed,
           })
         } catch (e) {
-          console.error('Error encrypting message:', e)
+          console.log('Error encrypting message:', e)
           convoState.sendMessage({
             text: 'Failed to encrypt message',
             facets: rt.facets,
@@ -705,9 +703,9 @@ export function MessagesList({
       wasB64 = true
     }
 
-    if (senderDid === ourDid) {
-      return
-    }
+    // if (senderDid === ourDid) {
+    //   return
+    // }
 
     if (text.startsWith('pubkey_') || text.startsWith('pubkeyrep_')) {
       let isReply = text.startsWith('pubkeyrep_')
@@ -717,6 +715,7 @@ export function MessagesList({
         const pubkey = JSON.parse(text.slice(prefix.length))
         await setItem(`pubkey_${senderDid}`, JSON.stringify(pubkey))
         // hide this message:
+        await setItem(`override_${messageId}`, '')
         // items = updateMessage(items, messageId, 'hidden')
         // delete the message after 3 seconds:
         // setTimeout(() => {
@@ -738,6 +737,10 @@ export function MessagesList({
       } catch (e) {
         console.error('Error setting pubkey:', e)
       }
+    }
+
+    if (senderDid === ourDid) {
+      return
     }
 
     if (text.startsWith('enc_') && wasB64) {
