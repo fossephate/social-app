@@ -260,7 +260,7 @@ async function getOrCreateKeyPair(did: string) {
 
 function updateMessage(items: ConvoItem[], messageId: string, text: string) {
   return items.map(item => {
-    if (item.type !== 'message') {
+    if (item.type !== 'message' && item.type !== 'pending-message') {
       return item
     }
     if (item.message.id === messageId) {
@@ -630,7 +630,6 @@ export function MessagesList({
             )}`
             // base64 encode the text
             const base64Text = btoa(encryptedText)
-            // console.log('base64Text:', base64Text)
             // add a message override:
             await setItem(`override_${base64Text}`, rt.text)
             // send the message with the encrypted text
@@ -651,10 +650,8 @@ export function MessagesList({
             rt.text,
             importedKey,
           )}`
-          // console.log('encryptedText:', encryptedText)
           // base64 encode the text
           const base64Text = btoa(encryptedText)
-          console.log('base64Text:', base64Text)
           // add a message override:
           await setItem(`override_${base64Text}`, rt.text)
           // send the message with the encrypted text
@@ -751,7 +748,9 @@ export function MessagesList({
         await setItem(`pubkey_${senderDid}`, JSON.stringify(pubkey))
         // hide this message:
         await setItem(`override_${messageId}`, '')
-        // items = updateMessage(items, messageId, 'hidden')
+        items = updateMessage(items, messageId, 'hidden')
+        // convoState.updateMessage(messageId, 'hidden')
+
         // delete the message after 3 seconds:
         // setTimeout(() => {
         //   convoState.deleteMessage(messageId)
@@ -790,16 +789,13 @@ export function MessagesList({
         console.log('Decrypted text:', decryptedText)
 
         items = updateMessage(items, messageId, decryptedText ?? '')
-        console.log('attempting to update items!!!')
-        convoState.items = items
+        convoState.fetchMessageHistory()
       } catch (e) {
         console.error('Error decrypting message:', e)
       }
     }
   })
-  // convoState.items = [...items]
-
-  convoState.items = items
+  convoState.items = [...items]
 
   return (
     <>
