@@ -156,7 +156,6 @@ let MessageItem = ({
               style={[
                 {
                   position: 'absolute',
-                  // left: -24,
                   bottom: 4,
                   fontSize: 8,
                   opacity: 0.8,
@@ -190,19 +189,13 @@ let MessageItem = ({
                     : {borderBottomLeftRadius: needsTail ? 2 : 17},
                 ]
               }>
-              <View
-                style={[
-                  {position: 'relative'},
-                  // isSecure && {paddingBottom: 8, paddingRight: 8},
-                ]}>
-                <RichText
-                  value={rt}
-                  style={[a.text_md, isFromSelf && {color: t.palette.white}]}
-                  interactiveStyle={a.underline}
-                  enableTags
-                  emojiMultiplier={3}
-                />
-              </View>
+              <RichText
+                value={rt}
+                style={[a.text_md, isFromSelf && {color: t.palette.white}]}
+                interactiveStyle={a.underline}
+                enableTags
+                emojiMultiplier={3}
+              />
             </View>
           )}
         </ActionsWrapper>
