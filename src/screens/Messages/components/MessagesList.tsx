@@ -791,9 +791,10 @@ export function MessagesList({
           text.slice('enc_'.length),
           ourKeyPair.privateKey,
         )
-        console.log('Decrypted text:', decryptedText)
+        // console.log('Decrypted text:', decryptedText)
 
         items = updateMessage(items, messageId, decryptedText ?? '')
+        await setItem(`override_${messageId}`, decryptedText ?? '')
         if (isLastMessage) {
           convoState.fetchMessageHistory()
         }
@@ -802,7 +803,7 @@ export function MessagesList({
         // set an override for this message saying we failed to decrypt it:
         await setItem(
           `override_${messageId}`,
-          'Failed to decrypt message, someone probably changed devices',
+          'Failed to decrypt message, someone probably changed devices, and a message may need to be resent',
         )
         // if this is the last message in the list, we need to set notReplied to true
         if (isLastMessage) {

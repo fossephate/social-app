@@ -151,6 +151,22 @@ let MessageItem = ({
           {AppBskyEmbedRecord.isView(message.embed) && (
             <MessageItemEmbed embed={message.embed} />
           )}
+          {isSecure && (
+            <Text
+              style={[
+                {
+                  position: 'absolute',
+                  // left: -24,
+                  bottom: 4,
+                  fontSize: 8,
+                  opacity: 0.8,
+                },
+                isFromSelf ? {left: -12} : {right: -12},
+                isFromSelf && {color: t.palette.white},
+              ]}>
+              🔒
+            </Text>
+          )}
           {rt.text.length > 0 && (
             <View
               style={
@@ -177,7 +193,7 @@ let MessageItem = ({
               <View
                 style={[
                   {position: 'relative'},
-                  isSecure && {paddingBottom: 8, paddingRight: 8},
+                  // isSecure && {paddingBottom: 8, paddingRight: 8},
                 ]}>
                 <RichText
                   value={rt}
@@ -186,21 +202,6 @@ let MessageItem = ({
                   enableTags
                   emojiMultiplier={3}
                 />
-                {isSecure && (
-                  <Text
-                    style={[
-                      {
-                        position: 'absolute',
-                        right: -10,
-                        bottom: 10,
-                        fontSize: 10,
-                        opacity: 0.8,
-                      },
-                      isFromSelf && {color: t.palette.white},
-                    ]}>
-                    🔒
-                  </Text>
-                )}
               </View>
             </View>
           )}
