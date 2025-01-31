@@ -115,12 +115,29 @@ let MessageItem = ({
 
     const override = getItem(`override_${message.id}`)
     const textOverride = getItem(`override_${message.text}`)
-    // console.log('override', override)
+
+    if (override || textOverride) {
+      message.facets ??= []
+      if (
+        !message.facets.some(facet =>
+          facet.features.some(feature => feature.$type === 'secure'),
+        )
+      ) {
+        message.facets.push({
+          index: {byteStart: 0, byteEnd: 0},
+          features: [{$type: 'secure'}],
+        })
+      }
+    }
     return new RichTextAPI({
       text: override ?? textOverride ?? message.text,
       facets: message.facets,
     })
-  }, [message.text, message.facets, message.id])
+  }, [message])
+
+  let isSecure = rt.facets?.some(facet =>
+    facet.features.some(feature => feature.$type === 'secure'),
+  )
 
   return (
     <>
@@ -157,13 +174,34 @@ let MessageItem = ({
                     : {borderBottomLeftRadius: needsTail ? 2 : 17},
                 ]
               }>
-              <RichText
-                value={rt}
-                style={[a.text_md, isFromSelf && {color: t.palette.white}]}
-                interactiveStyle={a.underline}
-                enableTags
-                emojiMultiplier={3}
-              />
+              <View
+                style={[
+                  {position: 'relative'},
+                  isSecure && {paddingBottom: 8, paddingRight: 8},
+                ]}>
+                <RichText
+                  value={rt}
+                  style={[a.text_md, isFromSelf && {color: t.palette.white}]}
+                  interactiveStyle={a.underline}
+                  enableTags
+                  emojiMultiplier={3}
+                />
+                {isSecure && (
+                  <Text
+                    style={[
+                      {
+                        position: 'absolute',
+                        right: -10,
+                        bottom: 10,
+                        fontSize: 10,
+                        opacity: 0.8,
+                      },
+                      isFromSelf && {color: t.palette.white},
+                    ]}>
+                    🔒
+                  </Text>
+                )}
+              </View>
             </View>
           )}
         </ActionsWrapper>

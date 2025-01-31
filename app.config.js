@@ -44,9 +44,9 @@ module.exports = function (config) {
     expo: {
       version: VERSION,
       name: 'Bluesky',
-      slug: 'bluesky',
+      slug: 'bsky-testing',
       scheme: 'bluesky',
-      owner: 'blueskysocial',
+      owner: 'fossephate',
       runtimeVersion: {
         policy: 'appVersion',
       },
@@ -55,7 +55,7 @@ module.exports = function (config) {
       primaryColor: '#1083fe',
       ios: {
         supportsTablet: false,
-        bundleIdentifier: 'xyz.blueskyweb.app',
+        bundleIdentifier: 'co.perish.bsky',
         config: {
           usesNonExemptEncryption: false,
         },
@@ -111,7 +111,7 @@ module.exports = function (config) {
         entitlements: {
           'com.apple.developer.kernel.increased-memory-limit': true,
           'com.apple.developer.kernel.extended-virtual-addressing': true,
-          'com.apple.security.application-groups': 'group.app.bsky',
+          'com.apple.security.application-groups': 'co.perish.group.app.bsky',
         },
         privacyManifests: {
           NSPrivacyAccessedAPITypes: [
@@ -155,7 +155,7 @@ module.exports = function (config) {
           backgroundColor: '#1185FE',
         },
         googleServicesFile: './google-services.json',
-        package: 'xyz.blueskyweb.app',
+        package: 'co.perish.bsky',
         intentFilters: [
           {
             action: 'VIEW',
@@ -372,33 +372,33 @@ module.exports = function (config) {
             experimental: {
               ios: {
                 appExtensions: [
-                  {
-                    targetName: 'Share-with-Bluesky',
-                    bundleIdentifier: 'xyz.blueskyweb.app.Share-with-Bluesky',
-                    entitlements: {
-                      'com.apple.security.application-groups': [
-                        'group.app.bsky',
-                      ],
-                    },
-                  },
-                  {
-                    targetName: 'BlueskyNSE',
-                    bundleIdentifier: 'xyz.blueskyweb.app.BlueskyNSE',
-                    entitlements: {
-                      'com.apple.security.application-groups': [
-                        'group.app.bsky',
-                      ],
-                    },
-                  },
-                  {
-                    targetName: 'BlueskyClip',
-                    bundleIdentifier: 'xyz.blueskyweb.app.AppClip',
-                  },
+                  //   {
+                  //     targetName: 'Share-with-Bluesky',
+                  //     bundleIdentifier: 'co.perish.bsky.Share-with-Bluesky',
+                  //     entitlements: {
+                  //       'com.apple.security.application-groups': [
+                  //         'co.perish.group.app.bsky',
+                  //       ],
+                  //     },
+                  //   },
+                  // {
+                  //   targetName: 'BlueskyNSE',
+                  //   bundleIdentifier: 'co.perish.bsky.BlueskyNSE',
+                  //   entitlements: {
+                  //     'com.apple.security.application-groups': [
+                  //       'co.perish.group.app.bsky',
+                  //     ],
+                  //   },
+                  // },
+                  //   {
+                  //     targetName: 'BlueskyClip',
+                  //     bundleIdentifier: 'co.perish.bsky.AppClip',
+                  //   },
                 ],
               },
             },
           },
-          projectId: '55bd077a-d905-4184-9c7f-94789ba0f302',
+          projectId: 'd59d42f2-14ca-4e9d-9328-54d6a896c82c',
         },
       },
       hooks: {

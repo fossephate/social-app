@@ -138,7 +138,6 @@ type SendMessage = (
   message: ChatBskyConvoSendMessage.InputSchema['message'],
 ) => void
 type FetchMessageHistory = () => Promise<void>
-
 export type ConvoStateUninitialized = {
   status: ConvoStatus.Uninitialized
   items: []
