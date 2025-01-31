@@ -133,7 +133,8 @@ let MessageItem = ({
       text: override ?? textOverride ?? message.text,
       facets: message.facets,
     })
-  }, [message])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message.text, message.facets, message.id])
 
   let isSecure = rt.facets?.some(facet =>
     facet.features.some(feature => feature.$type === 'secure'),
